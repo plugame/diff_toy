@@ -64,8 +64,6 @@ inject_lora_from_pretrained(unet,unet_lora_dict,network_alphas)
 inject_lora_from_pretrained(text_encoder,te_lora_dict,network_alphas)
 
 
-
-
 # generate
 positive_embeds, negative_embeds = encode_prompt(prompts, tokenizer, text_encoder,negative_prompt=negative_prompt)
 prompt_embeds = torch.cat([negative_embeds, positive_embeds])
@@ -81,17 +79,12 @@ for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
             encoder_hidden_states=prompt_embeds
             ).sample
 
+
         # CFGによる調整
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-
-        # いわゆる残差？
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         latents = scheduler.step(noise_pred, t, latents).prev_sample
 
     latent = decode_latents(latents,vae)
     latent.save(f"{output_dir}/gen_{i}.png")
-
-
-
-

@@ -66,9 +66,7 @@ for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
             ).sample
 
         # CFGによる調整
-        # いわゆる残差？
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         latents = scheduler.step(noise_pred, t, latents).prev_sample

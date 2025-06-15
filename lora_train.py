@@ -12,7 +12,6 @@ from accelerate import Accelerator
 from utils.dataset_utils import LoRADataset
 from utils.utils import inject_initial_lora, get_model_prefix, get_optimal_torch_dtype, show_model_param_status
 
-
 # base_model
 model_path = "E:\\lab\\program\\train_controlnet\\diffusers_model\\v1-5-pruned-emaonly"
 
@@ -96,7 +95,6 @@ lr_scheduler = AdafactorSchedule(
     initial_lr=lr
     )
 
-
 # prepare (acceleratorに渡して wrap する)
 unet, text_encoder, optimizer, lr_scheduler, dataloader = accelerator.prepare(
     unet, text_encoder, optimizer, lr_scheduler, dataloader
@@ -121,13 +119,13 @@ for epoch in range(num_epochs):
     pgbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
     for i, (latents, positive_embeds) in enumerate(pgbar):
         noise = torch.randn_like(latents)
-        timesteps = torch.randint(0, scheduler.config.num_train_timesteps, (latents.shape[0],), device=device).long()
+        t = torch.randint(0, scheduler.config.num_train_timesteps, (latents.shape[0],), device=device).long()
         
-        noisy_latents = scheduler.add_noise(latents, noise, timesteps)
+        noisy_latents = scheduler.add_noise(latents, noise, t)
 
         noise_pred = unet(
-            noisy_latents, 
-            timesteps, 
+            noisy_latents,
+            t, 
             encoder_hidden_states=positive_embeds
             ).sample
 
