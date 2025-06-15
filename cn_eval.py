@@ -7,21 +7,18 @@ from PIL import Image
 from utils.utils import encode_prompt,prepare_empty_latent,decode_latents,image_to_tensor
 
 
-#----------------------
-# parameter setting
-#----------------------
 device = torch.device("cuda:0")
 dtype = torch.float16
 
 # model
 model_path = r"E:\lab\program\train_controlnet\diffusers_model\1450_v9"
 
+# output
 output_dir = "generate"
 
 # parameter
 guidance_scale = 8
 sampling_steps = 20
-batch_size = 1
 width = 512
 height = 768
 
@@ -29,10 +26,8 @@ prompts =  "photorealistic, best quality, a woman standing in the pouring rain a
 
 negative_prompt = "low quality, worst quality, blurry, extra limbs"
 
-#--------------------
-# model setting
-#--------------------
 
+# model setting
 tokenizer = CLIPTokenizer.from_pretrained(f"{model_path}/tokenizer",local_files_only=True)
 text_encoder = CLIPTextModel.from_pretrained(f"{model_path}/text_encoder",torch_dtype=dtype).to(device)
 unet = UNet2DConditionModel.from_pretrained(model_path, subfolder="unet", torch_dtype=dtype).to(device)
@@ -41,9 +36,8 @@ scheduler = DDPMScheduler.from_pretrained(model_path, subfolder="scheduler")
 #scheduler = DPMSolverMultistepScheduler.from_pretrained(model_path,subfolder="scheduler",algorithm_type="sde-dpmsolver++",use_karras_sigmas = True)
 scheduler.set_timesteps(sampling_steps) 
 
-#--------------------
+
 # controlnet setting
-#--------------------
 class ControlNetModule:
     def __init__(
             self,
@@ -55,13 +49,9 @@ class ControlNetModule:
             pre_processer = None
             ):
         
-        self.controlnet = ControlNetModel.from_pretrained(
-                model_path, torch_dtype=dtype
-            ).to(device)
+        self.controlnet = ControlNetModel.from_pretrained(model_path, torch_dtype=dtype).to(device)
 
-        self.condition_scales = [
-            cond_scale if guidance_start <= t / sampling_steps <= guidance_end else 0.0 for t in range(sampling_steps)
-            ]
+        self.condition_scales = [cond_scale if guidance_start <= t / sampling_steps <= guidance_end else 0.0 for t in range(sampling_steps)]
 
         image = Image.open(image_path).convert("RGB")
         if pre_processer is not None:
@@ -80,14 +70,11 @@ controlnet_modules = [
     )
 ]
 
-#-----------------
 # generate
-#-----------------
-
 positive_embeds, negative_embeds = encode_prompt(prompts, tokenizer, text_encoder,negative_prompt=negative_prompt)
 prompt_embeds = torch.cat([negative_embeds, positive_embeds])
 
-latents = prepare_empty_latent(batch_size,width,height,scheduler,device,dtype)
+latents = prepare_empty_latent(width,height,scheduler,device,dtype)
 
 for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
     with torch.no_grad():

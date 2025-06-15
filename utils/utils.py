@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import math
 
-
 def get_optimal_torch_dtype(dtype_name:str):
     if dtype_name == "fp16":
         return torch.float16,torch.float32
@@ -90,18 +89,16 @@ def encode_prompt(
     return positive_embeds, negative_embeds
 
 
-
 def prepare_empty_latent(
-        batch_size,
         width,
         height,
         scheduler,
         device,
-        dtype=torch.float16
+        dtype=torch.float16,
+        batch_size = 1
         ):
     latents = torch.randn((batch_size, 4, height//8, width//8), device=device, dtype=dtype)
     return latents * scheduler.init_noise_sigma
-
 
 
 def get_model_prefix(model):
@@ -125,9 +122,7 @@ def get_module_by_key(model, key):
 def convert_injectable_dict_from_weight(lora_weight):
     unet_lora_dict = {k.removeprefix("unet."): v for k, v in lora_weight.items() if k.startswith("unet.") and not k.endswith(".alpha")}
     te_lora_dict = {k.removeprefix("text_encoder."): v for k, v in lora_weight.items() if k.startswith("text_encoder.") and not k.endswith(".alpha")}
-
-    network_alphas = {k: v for k, v in lora_weight.items() if k.endswith(".alpha")}
-
+    network_alphas = {k: float(v) for k, v in lora_weight.items() if k.endswith(".alpha")}
     return unet_lora_dict, te_lora_dict, network_alphas
 
 # 既存LoRAを注入, todo doropout
@@ -145,8 +140,6 @@ def inject_lora_from_pretrained(model, lora_state_dict, network_alphas):
         rank = torch.tensor(lora_A.shape[0])
         #複数alphaに非対応
         alpha = torch.tensor(list(network_alphas.values())[0])
-        #要検証
-
 
         # 対象モジュールの取得
         parent_module, attr_name = get_module_by_key(model, base_key)
@@ -193,8 +186,8 @@ def inject_lora_from_pretrained(model, lora_state_dict, network_alphas):
     
         # モジュールの置換
         setattr(parent_module, attr_name.replace('.weight', ''), lora_layer)
-        # これ結構重要
-        model = model.to(device=model.device, dtype=model.dtype)
+    # これ結構重要
+    model = model.to(device=model.device, dtype=model.dtype)
 
 
 
@@ -265,8 +258,8 @@ def inject_initial_lora(model, rank=4, alpha=1.0, dropout=0.0,dtype=torch.float3
 
             # モジュールを置換
             setattr(parent_module, last_name, lora_layer)
-            # これ結構重要
-            model = model.to(device=model.device)
+    # これ結構重要
+    model = model.to(device=model.device)
 
     return network_alphas
 

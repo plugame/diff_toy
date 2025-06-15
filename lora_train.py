@@ -10,7 +10,7 @@ from safetensors.torch import save_file
 from accelerate import Accelerator
 #original
 from utils.dataset_utils import LoRADataset
-from utils.utils import encode_prompt, inject_initial_lora, encode_image,get_model_prefix,get_optimal_torch_dtype,show_model_param_status
+from utils.utils import inject_initial_lora, get_model_prefix, get_optimal_torch_dtype, show_model_param_status
 
 
 # base_model
@@ -23,8 +23,8 @@ rank = 16
 alpha = 4
 
 # output
-output_dir = "./lora_output"
-output_name = "lora_weights"
+output_dir = "lora_output"
+output_name = "test_lora"
 
 # other
 batch_size = 1

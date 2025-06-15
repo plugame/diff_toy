@@ -9,17 +9,20 @@ from utils.utils import encode_prompt, prepare_empty_latent,decode_latents
 device = torch.device("cuda")
 dtype = torch.float16
 
-# モデルの読み込み
+# base_model
 model_path = r"E:\lab\program\train_controlnet\diffusers_model\1450_v9"
-sampling_steps=20 
-guidance_scale = 10
-batch_size = 1
-width = 512
-height = 768
 
 # output
 output_dir = "generate"
 os.makedirs(output_dir,exist_ok=True)
+
+# parameter
+sampling_steps=20 
+guidance_scale = 10
+width = 512
+height = 768
+
+
 
 prompts =  "1girl, virtual youtuber, blue hair, yellow eyes, hair flower, heart ahoge, white thighhighs, blue skirt, beret, frilled thighhighs, half updo, streaked hair, white headwear, colored tips, cleavage cutout, hair between eyes, blue coat, white shirt, side braid, elf, sleeveless shirt, corset, center frills, fur-trimmed boots, wariza, off shoulder, fur-trimmed coat, bare shoulders, belt, white flower, high heel boots, very long hair, pleated skirt, blue bowtie , solo, smile, open mouth, looking at viewer, standing, cowboy shot, straight-on, black background, simple background, source anime, absurdres, masterpiece, best quality, very aesthetic "
 negative_prompt = "low quality, worst quality, blurry, extra limbs"
@@ -48,7 +51,7 @@ scheduler.set_timesteps(sampling_steps)
 positive_embeds, negative_embeds = encode_prompt(prompts, tokenizer, text_encoder,negative_prompt=negative_prompt)
 prompt_embeds = torch.cat([negative_embeds, positive_embeds])
 
-latents = prepare_empty_latent(batch_size,width,height,scheduler,device,dtype)
+latents = prepare_empty_latent(width,height,scheduler,device,dtype)
 
 for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
     with torch.no_grad():

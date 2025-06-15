@@ -5,7 +5,7 @@ from transformers import CLIPTokenizer, CLIPTextModel
 from tqdm import tqdm
 from safetensors.torch import load_file
 #original
-from utils.utils import encode_prompt, prepare_empty_latent, encode_image, decode_latents,inject_lora_from_pretrained,convert_injectable_dict_from_weight
+from utils.utils import encode_prompt, prepare_empty_latent, decode_latents,inject_lora_from_pretrained, convert_injectable_dict_from_weight
 from utils.diffusers_utils import convert_injectable_dict_from_khoya_weight
 
 
@@ -20,13 +20,12 @@ output_dir = "generate"
 os.makedirs(output_dir,exist_ok=True)
 
 # lora
-lora_path = r"E:\sd\Lora\bocchi_style_offset.safetensors"
+lora_path = r"lora_output\lora_weights.safetensors"
 lora_scale = 0.8
 
 # parameter
 guidance_scale = 8
 sampling_steps=20
-batch_size = 1
 width = 512
 height = 768
 
@@ -38,7 +37,7 @@ prompts = "base_color,only_color,anime,little_witch"
 negative_prompt = None
 """
 
-"""model settings"""
+# load models
 tokenizer = CLIPTokenizer.from_pretrained(f"{model_path}/tokenizer",local_files_only=True)
 text_encoder = CLIPTextModel.from_pretrained(f"{model_path}/text_encoder",torch_dtype=dtype).to(device)
 unet = UNet2DConditionModel.from_pretrained(model_path, subfolder="unet", torch_dtype=dtype).to(device)
@@ -48,14 +47,13 @@ scheduler = DDPMScheduler.from_pretrained(model_path, subfolder="scheduler")
 scheduler.set_timesteps(sampling_steps) 
 
 
-"""lora settings"""
 # load lora
 weights = load_file(lora_path)
 
 # kohya_ss系から
-unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_khoya_weight(weights)
+# unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_khoya_weight(weights)
 # originalから
-#unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_weight(weights)
+unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_weight(weights)
 
 # weight scale lora 
 for key, weight in network_alphas.items():
@@ -68,12 +66,10 @@ inject_lora_from_pretrained(text_encoder,te_lora_dict,network_alphas)
 
 
 
-"""generate"""
+# generate
 positive_embeds, negative_embeds = encode_prompt(prompts, tokenizer, text_encoder,negative_prompt=negative_prompt)
-
 prompt_embeds = torch.cat([negative_embeds, positive_embeds])
-
-latents = prepare_empty_latent(batch_size,width,height,scheduler,device,dtype)
+latents = prepare_empty_latent(width,height,scheduler,device,dtype)
 
 for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
     with torch.no_grad():

@@ -19,8 +19,8 @@ dataset_path = "dataset"
 repeat = 1
 
 # output
-output_dir = "./controlnet_output"
-output_name = "test_cn"
+output_dir = "controlnet_output"
+output_name = "test_only_color"
 
 # train prameter
 batch_size = 1
