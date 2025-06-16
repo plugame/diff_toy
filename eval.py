@@ -19,8 +19,7 @@ os.makedirs(output_dir,exist_ok=True)
 # parameter
 sampling_steps=20 
 guidance_scale = 10
-width = 512
-height = 768
+width,height= 512,768
 
 
 
@@ -55,12 +54,12 @@ latents = prepare_empty_latent(width,height,scheduler,device,dtype)
 
 for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
     with torch.no_grad():
-        latent_input = scheduler.scale_model_input(latents, t)
-        #latent_input = latents
+        latent_input = torch.cat([latents]*2)
+        latent_input = scheduler.scale_model_input(latent_input, t)
 
         # 2回UNetに通す
         noise_pred = unet(
-            latent_input.repeat(2,1,1,1),
+            latent_input,
             t, 
             encoder_hidden_states=prompt_embeds
             ).sample

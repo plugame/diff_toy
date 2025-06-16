@@ -20,14 +20,14 @@ output_dir = "generate"
 os.makedirs(output_dir,exist_ok=True)
 
 # lora
-lora_path = r"lora_output\lora_weights.safetensors"
+lora_path = r"E:\sd\Lora\bocchi_style_offset.safetensors"
 lora_scale = 0.8
 
 # parameter
 guidance_scale = 8
 sampling_steps=20
-width = 512
-height = 768
+width,height = 512, 768
+
 
 prompts =  " bocchi style, gotou hitori, 1girl, blue eyes, cube hair ornament, hair between eyes, hair ornament, hair over eyes, jacket, long hair, one side up, open mouth, pink hair, pink jacket, solo, track jacket, zipper, indoors, masterpiece"
 negative_prompt = "low quality, worst quality, blurry, extra limbs"
@@ -51,9 +51,9 @@ scheduler.set_timesteps(sampling_steps)
 weights = load_file(lora_path)
 
 # kohya_ss系から
-# unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_khoya_weight(weights)
+unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_khoya_weight(weights)
 # originalから
-unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_weight(weights)
+# unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_weight(weights)
 
 # weight scale lora 
 for key, weight in network_alphas.items():
@@ -71,14 +71,16 @@ latents = prepare_empty_latent(width,height,scheduler,device,dtype)
 
 for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
     with torch.no_grad():
-        latent_input = scheduler.scale_model_input(latents, t)
         #latent_input = latents
+
+        latent_input = torch.cat([latents]*2)
+        latent_input = scheduler.scale_model_input(latent_input, t)
+
         noise_pred = unet(
-            latent_input.repeat(2,1,1,1),
+            latent_input,
             t, 
             encoder_hidden_states=prompt_embeds
             ).sample
-
 
         # CFGによる調整
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -86,5 +88,5 @@ for i, t in enumerate(tqdm(scheduler.timesteps.to(device))):
 
         latents = scheduler.step(noise_pred, t, latents).prev_sample
 
-    latent = decode_latents(latents,vae)
-    latent.save(f"{output_dir}/gen_{i}.png")
+    image = decode_latents(latents,vae)
+    image.save(f"{output_dir}/gen_{i}.png")
