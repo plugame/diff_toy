@@ -123,11 +123,12 @@ for epoch in range(num_epochs):
         
         noisy_latents = scheduler.add_noise(latents, noise, t)
 
-        noise_pred = unet(
-            noisy_latents,
-            t, 
-            encoder_hidden_states=positive_embeds
-            ).sample
+        with accelerator.autocast():
+            noise_pred = unet(
+                noisy_latents,
+                t, 
+                encoder_hidden_states=positive_embeds
+                ).sample
 
         loss = torch.nn.functional.mse_loss(noise_pred.float(), noise.float(), reduction="none")
         loss = loss.mean()

@@ -9,7 +9,13 @@ from safetensors.torch import load_file
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir))
-from utils.utils import prepare_empty_latent,decode_latents
+from utils.utils import prepare_empty_latent,decode_latents,inject_lora_from_pretrained
+from utils.diffusers_utils import convert_injectable_dict_from_khoya_weight_sdxl
+
+lora_path = r"E:\sd\Lora\Bocchi-20.safetensors"
+weights = load_file(lora_path)
+
+unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_khoya_weight_sdxl(weights)
 
 
 device = torch.device("cuda")
@@ -130,9 +136,22 @@ def _get_add_time_ids(
 vae = AutoencoderKL.from_pretrained(vae_id,torch_dtype=dtype).to(device)
 text_encoder = CLIPTextModel.from_pretrained(model_path,subfolder="text_encoder",torch_dtype=dtype).to(device)
 text_encoder_2 =CLIPTextModelWithProjection.from_pretrained(model_path,subfolder="text_encoder_2",torch_dtype=dtype).to(device)
+
 tokenizer = CLIPTokenizer.from_pretrained(model_path,subfolder="tokenizer")
 tokenizer_2 = CLIPTokenizer.from_pretrained(model_path,subfolder="tokenizer_2")
 unet = UNet2DConditionModel.from_pretrained(model_path,subfolder="unet",torch_dtype=dtype).to(device)
+
+inject_lora_from_pretrained(unet,unet_lora_dict,network_alphas)
+
+for i in unet.state_dict().keys():
+    print(i)
+
+exit()
+inject_lora_from_pretrained(text_encoder,te_lora_dict["text_encoder"],network_alphas)
+inject_lora_from_pretrained(text_encoder_2,te_lora_dict["text_encoder_2"],network_alphas)
+
+
+
 
 
 

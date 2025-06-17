@@ -5,14 +5,110 @@ import re
 
 def convert_injectable_dict_from_khoya_weight(lora_weight):
     state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(lora_weight)
-
     unet_lora_dict = {k.removeprefix(f"unet."): v for k, v in state_dict.items() if k.startswith(f"{"unet"}.")}
     unet_lora_dict = convert_unet_state_dict_to_peft(unet_lora_dict)
 
     te_lora_dict = {k.removeprefix(f"text_encoder."): v for k, v in state_dict.items() if k.startswith(f"{"text_encoder"}.")}
     te_lora_dict = convert_state_dict_to_diffusers(te_lora_dict)
     te_lora_dict = convert_state_dict_to_peft(te_lora_dict)
+
+
+
     return unet_lora_dict, te_lora_dict, network_alphas
+
+def convert_injectable_dict_from_khoya_weight_sdxl(lora_weight):
+    state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(lora_weight)
+
+    
+    unet_lora_dict = {k.removeprefix(f"unet."): v for k, v in state_dict.items() if k.startswith(f"{"unet"}.")}
+    #unet_lora_dict = convert_state_dict_to_diffusers(unet_lora_dict)
+    unet_lora_dict = convert_unet_state_dict_to_peft(unet_lora_dict)
+    unet_lora_dict = transform_state_dict(unet_lora_dict)
+
+    te_lora_dict = {k.removeprefix(f"text_encoder."): v for k, v in state_dict.items() if k.startswith(f"{"text_encoder"}.")}
+    te_lora_dict = convert_state_dict_to_diffusers(te_lora_dict)
+    te_lora_dict = convert_state_dict_to_peft(te_lora_dict)
+
+    te2_lora_dict = {k.removeprefix(f"text_encoder_2."): v for k, v in state_dict.items() if k.startswith(f"{"text_encoder_2"}.")}
+    if te2_lora_dict:
+        te2_lora_dict = convert_state_dict_to_diffusers(te2_lora_dict)
+        te2_lora_dict = convert_state_dict_to_peft(te2_lora_dict)
+        te_lora_dict = {"text_encoder": te_lora_dict, "text_encoder_2": te2_lora_dict}
+
+    return unet_lora_dict, te_lora_dict, network_alphas
+
+
+def _convert_unet_lora_key_sdxl(key):
+    parts = key.split('.')
+
+    if parts[0] == "down_blocks" and len(parts) >2:
+        block_idx = parts[1]
+
+        new_parts=None
+        if block_idx == '4':
+            new_parts = ['1', 'attentions', '0']
+        elif block_idx == '5':
+            new_parts = ['1', 'attentions', '1']
+        elif block_idx == '7':
+            new_parts = ['2', 'attentions', '0']
+        elif block_idx == '8':
+            new_parts = ['2', 'attentions', '1']
+
+        if new_parts is not None:
+            remaining_parts = parts[3:]
+            new_key = [parts[0]] + new_parts + remaining_parts
+            return '.'.join(new_key)
+        
+    elif parts[0] == "up_blocks" and len(parts) >2:
+        block_idx = parts[1]
+
+        new_parts=None
+        if block_idx == '0':
+            new_parts = ['0', 'attentions', '0']
+        elif block_idx == '1':
+            new_parts = ['0', 'attentions', '1']
+        elif block_idx == '2':
+            new_parts = ['0', 'attentions', '2']
+        elif block_idx == '3':
+            new_parts = ['1', 'attentions', '0']
+        elif block_idx == '4':
+            new_parts = ['1', 'attentions', '1']
+        elif block_idx == '5':
+            new_parts = ['1', 'attentions', '2']
+
+        if new_parts is not None:
+            remaining_parts = parts[3:]
+            new_key = [parts[0]] + new_parts + remaining_parts
+            return '.'.join(new_key)
+    elif parts[0] == "mid_block" and len(parts) >1:
+        block_idx = parts[1]
+
+        new_parts=None
+        if block_idx=='1':
+            new_parts = ['attentions', '0']
+
+        if new_parts is not None:
+            remaining_parts = parts[2:]
+            new_key = [parts[0]] + new_parts + remaining_parts
+            return '.'.join(new_key)
+
+    return key
+
+def transform_state_dict(original_state_dict):
+    # 変換後のキーと値を格納するための新しい空の辞書を作成
+    new_state_dict = {}
+    
+    # 元のstate_dictの各要素（キーと値のペア）に対してループ処理
+    for key, value in original_state_dict.items():
+        # ヘルパー関数を呼び出して、キーを変換する
+        new_key = _convert_unet_lora_key_sdxl(key)
+        
+        # 新しいキーと元の値のペアを、新しい辞書に追加する
+        new_state_dict[new_key] = value
+        
+    # 全てのキーの変換が終わったら、新しい辞書を返す
+    return new_state_dict
+
 
 
 def _convert_unet_lora_key(key):
