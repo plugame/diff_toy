@@ -17,18 +17,18 @@ model_path = "E:\\lab\\program\\train_controlnet\\diffusers_model\\v1-5-pruned-e
 
 # train_data
 dataset_path = "dataset"
-repeat = 1
-rank = 16
-alpha = 4
+repeat = 10
+rank = 128
+alpha = 64
 
 # output
 output_dir = "lora_output"
 output_name = "test_lora"
 
 # other
-batch_size = 1
-lr = 0.0001
-num_epochs = 2
+batch_size = 7
+lr = 1e-3
+num_epochs = 40
 save_every_n_epochs = 10
 image_size = 512
 
@@ -102,9 +102,11 @@ unet, text_encoder, optimizer, lr_scheduler, dataloader = accelerator.prepare(
 
 def _save_weight(output_name,unet,text_encoder,network_alphas):
     os.makedirs(output_dir,exist_ok=True)
+    unet_to_save = accelerator.unwrap_model(unet)
+    text_encoder_to_save = accelerator.unwrap_model(text_encoder)
     trained_dict = {
         name: param.detach()
-        for name, param in get_trainable_dict(unet,text_encoder).items()
+        for name, param in get_trainable_dict(unet_to_save,text_encoder_to_save).items()
     }
     # alpha 値も追加
     lora_state_dict = {**trained_dict, **network_alphas}

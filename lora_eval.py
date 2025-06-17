@@ -22,6 +22,7 @@ os.makedirs(output_dir,exist_ok=True)
 # lora
 lora_path = r"E:\sd\Lora\bocchi_style_offset.safetensors"
 lora_scale = 0.8
+original_lora = False
 
 # parameter
 guidance_scale = 8
@@ -50,10 +51,7 @@ scheduler.set_timesteps(sampling_steps)
 # load lora
 weights = load_file(lora_path)
 
-# kohya_ss系から
-unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_khoya_weight(weights)
-# originalから
-# unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_weight(weights)
+unet_lora_dict, te_lora_dict, network_alphas = convert_injectable_dict_from_weight(weights) if original_lora else convert_injectable_dict_from_khoya_weight(weights)
 
 # weight scale lora 
 for key, weight in network_alphas.items():

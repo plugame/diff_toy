@@ -33,7 +33,6 @@ tokenizer = CLIPTokenizer.from_pretrained(f"{model_path}/tokenizer",local_files_
 text_encoder = CLIPTextModel.from_pretrained(f"{model_path}/text_encoder",torch_dtype=dtype).to(device)
 unet = UNet2DConditionModel.from_pretrained(model_path, subfolder="unet", torch_dtype=dtype).to(device)
 vae = AutoencoderKL.from_pretrained(model_path, subfolder="vae", torch_dtype=dtype).to(device)
-#scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler", beta_schedule='scaled_linear',beta_start=0.00085,beta_end=0.0120,eta=0.0, torch_dtype=dtype)
 #scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_path,subfolder="scheduler")
 #scheduler = DPMSolverMultistepScheduler.from_pretrained(model_path,subfolder="scheduler",use_karras_sigmas=True)
 scheduler = DPMSolverMultistepScheduler.from_pretrained(
