@@ -2,6 +2,142 @@ from diffusers.utils.state_dict_utils import convert_state_dict_to_diffusers, co
 import collections
 from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 import re
+import torch
+
+UNET_SAFETENSORS_TO_DIFFUSERS_PREFIX={
+    "input_blocks.0.0": "conv_in",
+    "input_blocks.1.0.": "down_blocks.0.resnets.0.",
+    "input_blocks.2.0.": "down_blocks.0.resnets.1.",
+    "input_blocks.3.0.": "down_blocks.0.downsamplers.0.",
+    "input_blocks.4.0.": "down_blocks.1.resnets.0.",
+    "input_blocks.4.1.": "down_blocks.1.attentions.0.",
+    "input_blocks.5.0.": "down_blocks.1.resnets.1.",
+    "input_blocks.5.1.": "down_blocks.1.attentions.1.",
+    "input_blocks.6.0.": "down_blocks.1.downsamplers.0.",
+    "input_blocks.7.0.": "down_blocks.2.resnets.0.",
+    "input_blocks.7.1.": "down_blocks.2.attentions.0.",
+    "input_blocks.8.0.": "down_blocks.2.resnets.1.",
+    "input_blocks.8.1.": "down_blocks.2.attentions.1.",
+    "middle_block.0.": "mid_block.resnets.0.",
+    "middle_block.1.": "mid_block.attentions.0.",
+    "middle_block.2.": "mid_block.resnets.1.",
+    "output_blocks.0.0.": "up_blocks.0.resnets.0.",
+    "output_blocks.0.1.": "up_blocks.0.attentions.0.",
+    "output_blocks.1.0.": "up_blocks.0.resnets.1.",
+    "output_blocks.1.1.": "up_blocks.0.attentions.1.",
+    "output_blocks.2.0.": "up_blocks.0.resnets.2.",
+    "output_blocks.2.1.": "up_blocks.0.attentions.2.",
+    "output_blocks.2.2.": "up_blocks.0.upsamplers.0.",
+    "output_blocks.3.0.": "up_blocks.1.resnets.0.",
+    "output_blocks.3.1.": "up_blocks.1.attentions.0.",
+    "output_blocks.4.0.": "up_blocks.1.resnets.1.",
+    "output_blocks.4.1.": "up_blocks.1.attentions.1.",
+    "output_blocks.5.0.": "up_blocks.1.resnets.2.",
+    "output_blocks.5.1.": "up_blocks.1.attentions.2.",
+    "output_blocks.5.2.": "up_blocks.1.upsamplers.0.",
+    "output_blocks.6.0.": "up_blocks.2.resnets.0.",
+    "output_blocks.7.0.": "up_blocks.2.resnets.1.",
+    "output_blocks.8.0.": "up_blocks.2.resnets.2.",
+    "time_embed.0": "time_embedding.linear_1",
+    "time_embed.2": "time_embedding.linear_2",
+    "out.0": "conv_norm_out",
+    "out.2": "conv_out",
+    "label_emb.0.0": "add_embedding.linear_1",
+    "label_emb.0.2": "add_embedding.linear_2",
+}
+
+UNET_SAFETENSORS_TO_DIFFUSERS_MODULE = {
+    "skip_connection":"conv_shortcut",
+    "emb_layers.1": "time_emb_proj",
+    "in_layers.0": "norm1",
+    "in_layers.2": "conv1",
+    "out_layers.0": "norm2",
+    "out_layers.3": "conv2",
+    "op": "conv",
+}
+
+TEXT_ENCODER_2_SAFETENSORS_TO_DIFFUSERS={
+    "ln_1" :	"layer_norm1",
+    "ln_2" :	"layer_norm2",
+    "mlp.c_fc" : "mlp.fc1",
+    "mlp.c_proj" : "mlp.fc2",
+    "attn.out_proj" : "self_attn.out_proj",
+    "ln_final" : "text_model.final_layer_norm",
+    "positional_embedding" : "text_model.embeddings.position_embedding.weight",
+    "text_projection" : "text_projection.weight",
+    "token_embedding" : "text_model.embeddings.token_embedding",
+    "logit_scale" : None
+
+}
+
+def replace_key(key:str,pattern:dict):
+    for k,v in pattern.items():
+        if k in key:
+            if v is None: return None
+            new_key = key.replace(k,v)
+            return new_key
+    return key
+
+def _convert_diffusers_unet_dict(dict):
+    new_state_dict={}
+    for key,value in dict.items():
+        new_key = replace_key(key,UNET_SAFETENSORS_TO_DIFFUSERS_PREFIX)
+        new_key = replace_key(new_key,UNET_SAFETENSORS_TO_DIFFUSERS_MODULE)
+        new_state_dict[new_key] = value
+
+    return new_state_dict
+
+def _convert_diffusers_te2_dict(dict):
+    new_state_dict={}
+    for key,value in dict.items():
+        new_key = key.replace("transformer.resblocks.","text_model.encoder.layers.")
+        new_key = replace_key(new_key,TEXT_ENCODER_2_SAFETENSORS_TO_DIFFUSERS)
+
+        if new_key is None: continue
+
+        if "attn.in_proj" in key:
+            q_proj, k_proj, v_proj = torch.chunk(value, 3)
+                
+            # 新しいキー名で辞書に追加
+            layer_num = new_key.split(".")[3] # layers.{i} の番号を取得
+            ext = 'weight' if 'weight' in key else 'bias'
+            new_state_dict[f"text_model.encoder.layers.{layer_num}.self_attn.q_proj.{ext}"] = q_proj
+            new_state_dict[f"text_model.encoder.layers.{layer_num}.self_attn.k_proj.{ext}"] = k_proj
+            new_state_dict[f"text_model.encoder.layers.{layer_num}.self_attn.v_proj.{ext}"] = v_proj
+        else:
+            new_state_dict[new_key] = value
+
+    return new_state_dict
+    
+
+def weights_test(weights):
+    UNET_PREFIX = "model.diffusion_model."
+    TE1_PREFIX = "conditioner.embedders.0.transformer."
+    TE2_PREFIX = "conditioner.embedders.1.model."
+    unet_state_dict = {}
+    te1_state_dict = {}
+    te2_state_dict = {}
+    other_dict = {}
+    for key, value in weights.items():
+        if key.startswith(UNET_PREFIX):
+            # プレフィックスを削除してキーを整形
+            new_key = key[len(UNET_PREFIX):]
+            unet_state_dict[new_key] = value
+        elif key.startswith(TE1_PREFIX):
+            new_key = key[len(TE1_PREFIX):]
+            te1_state_dict[new_key] = value
+        elif key.startswith(TE2_PREFIX):
+            new_key = key[len(TE2_PREFIX):]
+            te2_state_dict[new_key] = value
+        else:
+            other_dict[key] = value
+
+
+    unet_state_dict = _convert_diffusers_unet_dict(unet_state_dict)
+    te2_state_dict = _convert_diffusers_te2_dict(te2_state_dict)
+
+    return unet_state_dict, te1_state_dict, te2_state_dict
+    
 
 def convert_injectable_dict_from_khoya_weight(lora_weight):
     state_dict, network_alphas = _convert_non_diffusers_lora_to_diffusers(lora_weight)

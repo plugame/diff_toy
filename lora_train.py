@@ -26,7 +26,7 @@ output_dir = "lora_output"
 output_name = "test_lora"
 
 # other
-batch_size = 7
+batch_size = 5
 lr = 1e-3
 num_epochs = 40
 save_every_n_epochs = 10
@@ -136,9 +136,9 @@ for epoch in range(num_epochs):
         loss = loss.mean()
 
         accelerator.backward(loss)
-        optimizer.zero_grad()
         lr_scheduler.step()
         optimizer.step()
+        optimizer.zero_grad()
 
         epoch_loss += loss.item()
         pgbar.set_postfix(loss=f"{loss.item():.4f}")

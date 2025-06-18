@@ -10,12 +10,23 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir))
 from utils.utils import prepare_empty_latent,decode_latents
+from utils.diffusers_utils import weights_test
 
 
 device = torch.device("cuda")
 dtype = torch.bfloat16
 
+model_path = r"E:\sd\check point\illustriousXL_v01.safetensors"
+vae = AutoencoderKL.from_single_file(model_path, torch_dtype=dtype).to(device)
+
+weights = load_file(model_path)
+
+unet_state_dict,te1_state_dict,te2_state_dict = weights_test(weights)
+
 model_path = r"E:\sd\diffusers_model\stable-diffusion-xl-base-1.0"
+
+
+
 # SDXLのVAEはfp16での不具合を修正したものが推奨される
 vae_id = "madebyollin/sdxl-vae-fp16-fix"
 
@@ -28,6 +39,7 @@ prompts =  "An astronaut riding a green horse"
 negative_prompt = "low quality, worst quality, blurry, extra limbs"
 
 guidance_scale = 8
+
 
 def _encode_one_prompt(
     prompt: List[str],
@@ -127,14 +139,20 @@ def _get_add_time_ids(
     add_time_ids_tensor = torch.tensor([add_time_ids_list], dtype=dtype)
     return add_time_ids_tensor
 
-vae = AutoencoderKL.from_pretrained(vae_id,torch_dtype=dtype).to(device)
-text_encoder = CLIPTextModel.from_pretrained(model_path,subfolder="text_encoder",torch_dtype=dtype).to(device)
-text_encoder_2 =CLIPTextModelWithProjection.from_pretrained(model_path,subfolder="text_encoder_2",torch_dtype=dtype).to(device)
+#vae = AutoencoderKL.from_pretrained(vae_id,torch_dtype=dtype).to(device)
+text_encoder = CLIPTextModel.from_pretrained(model_path,subfolder="text_encoder",torch_dtype=dtype)
+text_encoder_2 =CLIPTextModelWithProjection.from_pretrained(model_path,subfolder="text_encoder_2",torch_dtype=dtype)
 tokenizer = CLIPTokenizer.from_pretrained(model_path,subfolder="tokenizer")
 tokenizer_2 = CLIPTokenizer.from_pretrained(model_path,subfolder="tokenizer_2")
-unet = UNet2DConditionModel.from_pretrained(model_path,subfolder="unet",torch_dtype=dtype).to(device)
+unet = UNet2DConditionModel.from_pretrained(model_path,subfolder="unet",torch_dtype=dtype)
+print("base")
 
+unet = unet.load_state_dict(unet_state_dict,strict=False)
+text_encoder = text_encoder.load_state_dict(te1_state_dict,strict=False)
+text_encoder_2 =text_encoder_2.load_state_dict(te2_state_dict,strict=False)
 
+print("loaded")
+exit()
 
 #scheduler = DDPMScheduler.from_pretrained(model_id,subfolder="scheduler",torch_dtype=dtype)
 scheduler = DPMSolverMultistepScheduler.from_pretrained(model_path, subfolder="scheduler", algorithm_type="sde-dpmsolver++", use_karras_sigmas = True)

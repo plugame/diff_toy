@@ -124,9 +124,9 @@ for epoch in range(num_epochs):
         loss = loss.mean()
 
         accelerator.backward(loss)
-        optimizer.zero_grad()
         lr_scheduler.step()
         optimizer.step()
+        optimizer.zero_grad()
         
         epoch_loss += loss.item()
 
