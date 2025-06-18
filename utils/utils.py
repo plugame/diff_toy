@@ -23,12 +23,11 @@ def image_to_tensor(image: Image.Image, resize:tuple[int,int]=None)->torch.Tenso
 
     transform = transforms.Compose([
         transforms.Resize((height, width), interpolation=transforms.InterpolationMode.BILINEAR),
-        transforms.ToTensor()
+        transforms.ToTensor() # これにより [0, 1] になる
     ])
 
     image_tensor = transform(image).unsqueeze(0)
     return image_tensor
-
 
 def encode_image(image: Image.Image, vae: AutoencoderKL) -> torch.Tensor:
     # 元のサイズを取得し、8の倍数に丸める
@@ -38,17 +37,18 @@ def encode_image(image: Image.Image, vae: AutoencoderKL) -> torch.Tensor:
     size = (width,height)
 
     image_tensor = image_to_tensor(image,size).to(vae.device, dtype=vae.dtype)
+    image_tensor = image_tensor * 2 - 1 # [0, 1] -> [-1, 1] に変換
     with torch.no_grad():
         encoded = vae.encode(image_tensor)
         latents = encoded.latent_dist.sample() * vae.config.scaling_factor
-    return latents  # shape: (1, 4, 64, 64)
+    return latents # shape: (1, 4, 64, 64)
 
 def decode_latents(latents: torch.Tensor, vae: AutoencoderKL) -> Image.Image:
     latents = latents / vae.config.scaling_factor
     with torch.no_grad():
         image = vae.decode(latents).sample
 
-    image = (image / 2 + 0.5).clamp(0, 1)
+    image = (image / 2 + 0.5).clamp(0, 1) # ここは [-1, 1] -> [0, 1]
     image_np = image.detach().cpu().permute(0, 2, 3, 1).float().numpy()
     image_uint8 = (image_np * 255).round().astype("uint8")
     return Image.fromarray(image_uint8[0])

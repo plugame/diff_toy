@@ -113,41 +113,46 @@ def _save_weight(output_name,unet,text_encoder,network_alphas):
     # LoRAの重み保存
     save_file(lora_state_dict, os.path.join(output_dir, output_name+".safetensors"))
 
+total_steps = len(dataloader) * num_epochs
+
 # 学習ループ
 unet.train()
 text_encoder.train()
-for epoch in range(num_epochs):
-    epoch_loss = 0
-    pgbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
-    for i, (latents, positive_embeds) in enumerate(pgbar):
-        noise = torch.randn_like(latents)
-        t = torch.randint(0, scheduler.config.num_train_timesteps, (latents.shape[0],), device=device).long()
-        
-        noisy_latents = scheduler.add_noise(latents, noise, t)
+with tqdm(total=total_steps) as pgbar:
+    for epoch in range(num_epochs):
+        epoch_loss = 0
+        pgbar.set_description(f"Epoch {epoch+1}/{num_epochs}")
+        for i, (latents, positive_embeds) in enumerate(dataloader):
+            noise = torch.randn_like(latents)
+            t = torch.randint(0, scheduler.config.num_train_timesteps, (latents.shape[0],), device=device).long()
+            
+            noisy_latents = scheduler.add_noise(latents, noise, t)
 
-        with accelerator.autocast():
-            noise_pred = unet(
-                noisy_latents,
-                t, 
-                encoder_hidden_states=positive_embeds
-                ).sample
+            with accelerator.autocast():
+                noise_pred = unet(
+                    noisy_latents,
+                    t, 
+                    encoder_hidden_states=positive_embeds
+                    ).sample
 
-        loss = torch.nn.functional.mse_loss(noise_pred.float(), noise.float(), reduction="none")
-        loss = loss.mean()
+            loss = torch.nn.functional.mse_loss(noise_pred.float(), noise.float(), reduction="none")
+            loss = loss.mean()
 
-        accelerator.backward(loss)
-        lr_scheduler.step()
-        optimizer.step()
-        optimizer.zero_grad()
+            accelerator.backward(loss)
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
 
-        epoch_loss += loss.item()
-        pgbar.set_postfix(loss=f"{loss.item():.4f}")
+            epoch_loss += loss.item()
 
-    if save_every_n_epochs is not None:
-        if (epoch+1) % save_every_n_epochs == 0 and epoch+1 < num_epochs:
-            _save_weight(f"{epoch}_{output_name}",unet,text_encoder,network_alphas)
+            pgbar.update(1)
+            pgbar.set_postfix(loss=f"{loss.item():.4f}")
 
-    accelerator.print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f}")
+        if save_every_n_epochs is not None:
+            if (epoch+1) % save_every_n_epochs == 0 and epoch+1 < num_epochs:
+                _save_weight(f"{epoch}_{output_name}",unet,text_encoder,network_alphas)
+
+        accelerator.print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f}")
 
 
 _save_weight(output_name,unet,text_encoder,network_alphas)
