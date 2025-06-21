@@ -14,6 +14,11 @@ def get_optimal_torch_dtype(dtype_name:str):
         return torch.bfloat16,torch.bfloat16
     else:
         return torch.float32,torch.float32
+    
+def load_image(img_path,size:tuple[int,int]=None,resample=Image.NEAREST):
+    if size is not None:
+        return Image.open(img_path).convert("RGB").resize(size, resample=resample)
+    return Image.open(img_path).convert("RGB")
 
 def image_to_tensor(image: Image.Image, resize:tuple[int,int]=None)->torch.Tensor:
     if resize is None:
