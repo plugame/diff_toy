@@ -89,29 +89,43 @@ class OriginalDataset(torch.utils.data.Dataset):
         
         return x_0_latent, x_gamma_latent, positive_embeds
     
-def add_noise(x_0,t,noise,x_gamma):
+def add_noise(x_0, t, noise, x_gamma):
+    t = t.cpu()
     alpha_prod_t = scheduler.alphas_cumprod[t]
-    beta_prod_t = 1 - alpha_prod_t
+    alpha_prod_t = alpha_prod_t.to(x_0.device) # x_0と同じデバイスに移動させる
 
-    x_t = torch.sqrt(alpha_prod_t)*x_0+torch.sqrt(beta_prod_t)*(noise+x_gamma)
+    num_dims = x_0.ndim
+    for _ in range(num_dims - 1): # x_0の次元数-1回（バッチ次元を除く）繰り返す
+        alpha_prod_t = alpha_prod_t.unsqueeze(-1) # 最後の次元に1を追加
+
+    beta_prod_t = 1 - alpha_prod_t
+    x_t = torch.sqrt(alpha_prod_t) * x_0 + torch.sqrt(beta_prod_t) * (noise + x_gamma)
     return x_t
 
 
 def step(x_t,t,noise_pred,x_gamma):
-    # DDIMの論文に従い、一つ前のタイムステップを計算
+    t = t.cpu()
+    # 1つ前のタイムステップ（t=300, prev_t = 200)
     prev_t = t - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
 
     # 1. 必要なαの値を取得
     alpha_prod_t = scheduler.alphas_cumprod[t]
-    alpha_prod_t_prev = scheduler.alphas_cumprod[prev_t] if prev_t >= 0 else scheduler.final_alpha_cumprod
+    alpha_prod_prev_t = scheduler.alphas_cumprod[prev_t] if prev_t >= 0 else scheduler.final_alpha_cumprod
+    alpha_prod_t = alpha_prod_t.to(x_t.device)
+    alpha_prod_prev_t = alpha_prod_prev_t.to(x_t.device)
+
+    num_dims = x_t.ndim
+    for _ in range(num_dims - 1): 
+        alpha_prod_t = alpha_prod_t.unsqueeze(-1)
+        alpha_prod_prev_t = alpha_prod_prev_t.unsqueeze(-1)
+
     beta_prod_t = 1 - alpha_prod_t
+    beta_prod_prev_t = 1 - alpha_prod_prev_t
 
-    beta_prod_t_prev = 1-alpha_prod_t_prev
+    x_0_pred = (1/torch.sqrt(alpha_prod_t)) * (x_t - torch.sqrt(beta_prod_t) * (noise_pred + x_gamma))
+    x_prev_t_pred = torch.sqrt(alpha_prod_prev_t) * x_0_pred+torch.sqrt(beta_prod_prev_t) * (noise_pred+x_gamma)
 
-    x_0_pred = (1/torch.sqrt(alpha_prod_t)) * (x_t - torch.sqrt(beta_prod_t) * (noise_pred+x_gamma))
-    x_t_1_pred = torch.sqrt(alpha_prod_t_prev)*x_0_pred+torch.sqrt(beta_prod_t_prev)*(noise_pred+x_gamma)
-
-    return x_t_1_pred
+    return x_prev_t_pred
     
 # モデル読み込み
 tokenizer = CLIPTokenizer.from_pretrained(f"{model_path}/tokenizer")
@@ -216,7 +230,7 @@ with tqdm(total=total_steps) as pgbar:
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-            
+
             epoch_loss += loss.item()
 
             pgbar.update(1)
