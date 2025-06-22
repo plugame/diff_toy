@@ -37,12 +37,7 @@ unet = UNet2DConditionModel.from_pretrained(model_path, subfolder="unet", torch_
 vae = AutoencoderKL.from_pretrained(model_path, subfolder="vae", torch_dtype=dtype).to(device)
 #scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_path,subfolder="scheduler")
 #scheduler = DPMSolverMultistepScheduler.from_pretrained(model_path,subfolder="scheduler",use_karras_sigmas=True)
-scheduler = DPMSolverMultistepScheduler.from_pretrained(
-    model_path,
-    subfolder="scheduler",
-    algorithm_type="sde-dpmsolver++",
-    use_karras_sigmas = True
-)
+scheduler = DPMSolverMultistepScheduler.from_pretrained(model_path,subfolder="scheduler",algorithm_type="sde-dpmsolver++",use_karras_sigmas = True)
 scheduler.set_timesteps(sampling_steps)
 
 

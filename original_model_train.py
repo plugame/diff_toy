@@ -2,7 +2,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
-from diffusers import UNet2DConditionModel, AutoencoderKL, DDPMScheduler, EulerAncestralDiscreteScheduler
+from diffusers import UNet2DConditionModel, AutoencoderKL, DDPMScheduler, EulerAncestralDiscreteScheduler,DDIMScheduler
 from transformers import CLIPTextModel, CLIPTokenizer, Adafactor
 from transformers.optimization import AdafactorSchedule
 from tqdm import tqdm
@@ -89,12 +89,36 @@ class OriginalDataset(torch.utils.data.Dataset):
         
         return x_0_latent, x_gamma_latent, positive_embeds
     
+def add_noise(x_0,t,noise,x_gamma):
+    alpha_prod_t = scheduler.alphas_cumprod[t]
+    beta_prod_t = 1 - alpha_prod_t
+
+    x_t = torch.sqrt(alpha_prod_t)*x_0+torch.sqrt(beta_prod_t)*(noise+x_gamma)
+    return x_t
+
+
+def step(x_t,t,noise_pred,x_gamma):
+    # DDIMの論文に従い、一つ前のタイムステップを計算
+    prev_t = t - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
+
+    # 1. 必要なαの値を取得
+    alpha_prod_t = scheduler.alphas_cumprod[t]
+    alpha_prod_t_prev = scheduler.alphas_cumprod[prev_t] if prev_t >= 0 else scheduler.final_alpha_cumprod
+    beta_prod_t = 1 - alpha_prod_t
+
+    beta_prod_t_prev = 1-alpha_prod_t_prev
+
+    x_0_pred = (1/torch.sqrt(alpha_prod_t)) * (x_t - torch.sqrt(beta_prod_t) * (noise_pred+x_gamma))
+    x_t_1_pred = torch.sqrt(alpha_prod_t_prev)*x_0_pred+torch.sqrt(beta_prod_t_prev)*(noise_pred+x_gamma)
+
+    return x_t_1_pred
+    
 # モデル読み込み
 tokenizer = CLIPTokenizer.from_pretrained(f"{model_path}/tokenizer")
 text_encoder = CLIPTextModel.from_pretrained(f"{model_path}/text_encoder", torch_dtype=dtype).to(device)
 vae = AutoencoderKL.from_pretrained(f"{model_path}/vae", torch_dtype=dtype).to(device)
 unet = UNet2DConditionModel.from_pretrained(f"{model_path}/unet", torch_dtype=dtype).to(device)
-scheduler = DDPMScheduler.from_pretrained(model_path, subfolder="scheduler")
+scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
 #scheduler = EulerAncestralDiscreteScheduler.from_pretrained(model_path, subfolder="scheduler")
 
 
@@ -176,14 +200,7 @@ with tqdm(total=total_steps) as pgbar:
             noise = torch.randn_like(x_0_latents)
             t = torch.randint(0, scheduler.config.num_train_timesteps, (x_0_latents.shape[0],), device=device).long()
             
-            #tはlongなのでfloatにキャスト
-            lmd_t = t.float() / (scheduler.config.num_train_timesteps - 1)
-            # バッチ対応
-            lmd_t = lmd_t.reshape(-1, 1, 1, 1)
-
-            latent =(1 - lmd_t) * x_0_latents + lmd_t * x_gamma_latents
-
-            noisy_latents = scheduler.add_noise(latent, noise, t)
+            noisy_latents = add_noise(x_0_latents,t, noise,x_gamma_latents)
 
             with accelerator.autocast():
                 noise_pred = unet(
@@ -199,7 +216,7 @@ with tqdm(total=total_steps) as pgbar:
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-
+            
             epoch_loss += loss.item()
 
             pgbar.update(1)
