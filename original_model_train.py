@@ -14,24 +14,27 @@ from utils.dataset_utils import LoRADataset
 from utils.utils import inject_initial_lora, get_model_prefix, get_optimal_torch_dtype, show_model_param_status,encode_image,encode_prompt
 
 # base_model
-model_path = "E:\\lab\\program\\train_controlnet\\diffusers_model\\v1-5-pruned-emaonly"
+model_path = r"C:\lab\mori_m\diff_toy\diffusers_model\v1-5-pruned-emaonly"
 
 # train_data
 dataset_path = "dataset"
-repeat = 10
+repeat = 20
 rank = 128
 alpha = 64
 
+# ((dataset_num*repeat)/batch_size) * num_epock
 # output
-output_dir = "lora_output"
-output_name = "test_lora"
+output_dir = "orign_output"
+output_name = "yt_lora_type"
+
 
 # other
-batch_size = 5
 lr = 1e-3
-num_epochs = 40
+batch_size = 12
+num_epochs = 30
 save_every_n_epochs = 10
 image_size = 512
+
 
 
 # accelerator, dtype, device
@@ -43,7 +46,7 @@ class OriginalDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, vae, tokenizer, text_encoder,size=256, repeat=1):
         self.x_0_dir = os.path.join(root_dir, "x_0")
         self.x_gamma_dir = os.path.join(root_dir, "x_gamma")
-        self.caption_dir = os.path.join(root_dir, "captions")
+        self.caption_dir = os.path.join(root_dir, "x_caption")
         self.tokenizer = tokenizer
         self.text_encoder = text_encoder
         self.size = (size,size)
@@ -100,8 +103,27 @@ def add_noise(x_0, t, noise, x_gamma):
 
     beta_prod_t = 1 - alpha_prod_t
     x_t = torch.sqrt(alpha_prod_t) * x_0 + torch.sqrt(beta_prod_t) * (noise + x_gamma)
+
+    x_t = x_t.to(dtype=dtype)
     return x_t
 
+def add_noise2(x_0, t, noise, x_gamma):
+    t = t.cpu()
+    alpha_prod_t = scheduler.alphas_cumprod[t]
+    alpha_prod_t = alpha_prod_t.to(x_0.device) # x_0と同じデバイスに移動させる
+
+    num_dims = x_0.ndim
+    for _ in range(num_dims - 1): # x_0の次元数-1回（バッチ次元を除く）繰り返す
+        alpha_prod_t = alpha_prod_t.unsqueeze(-1) # 最後の次元に1を追加
+
+    beta_prod_t = 1 - alpha_prod_t
+
+    y_t = torch.sqrt(alpha_prod_t) * x_0 + torch.sqrt(beta_prod_t) * x_gamma
+    x_t = torch.sqrt(alpha_prod_t) * y_t + torch.sqrt(beta_prod_t) * noise
+
+    y_t = y_t.to(dtype=x_0.dtype)
+    x_t = x_t.to(dtype=x_0.dtype)
+    return x_t
 
 def step(x_t,t,noise_pred,x_gamma):
     t = t.cpu()
@@ -124,6 +146,34 @@ def step(x_t,t,noise_pred,x_gamma):
 
     x_0_pred = (1/torch.sqrt(alpha_prod_t)) * (x_t - torch.sqrt(beta_prod_t) * (noise_pred + x_gamma))
     x_prev_t_pred = torch.sqrt(alpha_prod_prev_t) * x_0_pred+torch.sqrt(beta_prod_prev_t) * (noise_pred+x_gamma)
+
+    return x_prev_t_pred
+
+def step2(x_t,t,noise_pred,x_gamma):
+    t = t.cpu()
+    # 1つ前のタイムステップ（t=300, prev_t = 200)
+    prev_t = t - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
+
+    # 1. 必要なαの値を取得
+    alpha_t = scheduler.alphas[t]
+    alpha_prod_t = scheduler.alphas_cumprod[t]
+    alpha_prod_prev_t = scheduler.alphas_cumprod[prev_t] if prev_t >= 0 else scheduler.final_alpha_cumprod
+    alpha_prod_t = alpha_prod_t.to(x_t.device)
+    alpha_prod_prev_t = alpha_prod_prev_t.to(x_t.device)
+
+    num_dims = x_t.ndim
+    for _ in range(num_dims - 1): 
+        alpha_prod_t = alpha_prod_t.unsqueeze(-1)
+        alpha_prod_prev_t = alpha_prod_prev_t.unsqueeze(-1)
+
+    beta_prod_t = 1 - alpha_prod_t
+    beta_prod_prev_t = 1 - alpha_prod_prev_t
+
+    y_t_pred=(1/torch.sqrt(alpha_prod_t))*(x_t-torch.sqrt(beta_prod_t)*noise_pred)
+    y_prev_t_pred = (1/torch.sqrt(alpha_t))*(y_t_pred-torch.sqrt(beta_prod_t)*x_gamma)+torch.sqrt(beta_prod_prev_t)*x_gamma
+
+    #x_0_pred = (1/torch.sqrt(alpha_prod_t)) * (x_t - torch.sqrt(beta_prod_t) * (noise_pred + x_gamma))
+    x_prev_t_pred = torch.sqrt(alpha_prod_prev_t) * y_prev_t_pred+torch.sqrt(beta_prod_prev_t) * (noise_pred)
 
     return x_prev_t_pred
     
@@ -214,7 +264,7 @@ with tqdm(total=total_steps) as pgbar:
             noise = torch.randn_like(x_0_latents)
             t = torch.randint(0, scheduler.config.num_train_timesteps, (x_0_latents.shape[0],), device=device).long()
             
-            noisy_latents = add_noise(x_0_latents,t, noise,x_gamma_latents)
+            noisy_latents = add_noise2(x_0_latents,t, noise,x_gamma_latents)
 
             with accelerator.autocast():
                 noise_pred = unet(
@@ -230,7 +280,7 @@ with tqdm(total=total_steps) as pgbar:
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-
+            
             epoch_loss += loss.item()
 
             pgbar.update(1)

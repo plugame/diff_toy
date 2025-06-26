@@ -17,7 +17,7 @@ model_path = "E:\\lab\\program\\train_controlnet\\diffusers_model\\v1-5-pruned-e
 
 # train_data
 dataset_path = "dataset"
-repeat = 10
+repeat = 20
 rank = 128
 alpha = 64
 
@@ -28,7 +28,7 @@ output_name = "test_lora"
 # other
 batch_size = 5
 lr = 1e-3
-num_epochs = 40
+num_epochs = 20
 save_every_n_epochs = 10
 image_size = 512
 

@@ -3,6 +3,9 @@ generate
 lora_output
 test
 
+test2.py
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -10,7 +13,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+*.png
 # Distribution / packaging
 .Python
 build/
