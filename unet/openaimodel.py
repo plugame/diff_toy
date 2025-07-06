@@ -1067,7 +1067,7 @@ class UNetModel_LTIM(nn.Module):
 
             if down_block_additional_residuals is not None:
                 h = h + down_block_additional_residuals[i]
-
+            
             skipcs.append(h)
         
         # Bottleneck

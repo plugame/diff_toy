@@ -29,7 +29,6 @@ guidance_scale = 8
 width,height= 512,512
 
 
-
 prompts = "base_color,only_color,anime,little_witch"
 negative_prompt = None
 
